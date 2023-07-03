@@ -115,7 +115,6 @@ extension Double: FloatPropertyProtocol {}
 
 fileprivate let formatter: NumberFormatter = {
     let formatter = NumberFormatter()
-    formatter.locale = Locale(identifier: "zh_CN")
     formatter.usesGroupingSeparator = false
     formatter.numberStyle = .decimal
     formatter.maximumFractionDigits = 16

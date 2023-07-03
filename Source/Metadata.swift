@@ -18,23 +18,14 @@
 //  Created by zhouzhuo on 07/01/2017.
 //
 
-import Foundation
-
 struct _class_rw_t {
     var flags: Int32
     var version: Int32
     var ro: UInt
     // other fields we don't care
 
-    // reference: include/swift/Remote/MetadataReader.h/readObjcRODataPtr
     func class_ro_t() -> UnsafePointer<_class_ro_t>? {
-        var addr: UInt = self.ro
-        if (self.ro & UInt(1)) != 0 {
-            if let ptr = UnsafePointer<UInt>(bitPattern: self.ro ^ 1) {
-                addr = ptr.pointee
-            }
-        }
-        return UnsafePointer<_class_ro_t>(bitPattern: addr)
+        return UnsafePointer<_class_ro_t>(bitPattern: self.ro)
     }
 }
 
@@ -149,17 +140,15 @@ extension Metadata {
             guard let superclass = pointer.pointee.superclass else {
                 return nil
             }
-            
-            // ignore objc-runtime layer
-            guard let metaclass = Metadata.Class(anyType: superclass) else {
-                return nil
-            }
 
             // If the superclass doesn't conform to handyjson/handyjsonenum protocol,
             // we should ignore the properties inside
-            // Use metaclass.isSwiftClass to test if it is a swift class, if it is not return nil directly, or `superclass is HandyJSON.Type` wil crash.
-            if !metaclass.isSwiftClass
-                || (!(superclass is HandyJSON.Type) && !(superclass is HandyJSONEnum.Type)) {
+            if !(superclass is HandyJSON.Type) && !(superclass is HandyJSONEnum.Type) {
+                return nil
+            }
+
+            // ignore objc-runtime layer
+            guard let metaclass = Metadata.Class(anyType: superclass) else {
                 return nil
             }
 
@@ -188,15 +177,15 @@ extension Metadata {
         func _propertyDescriptionsAndStartPoint() -> ([Property.Description], Int32?)? {
             let instanceStart = pointer.pointee.class_rw_t()?.pointee.class_ro_t()?.pointee.instanceStart
             var result: [Property.Description] = []
-            if let fieldOffsets = self.fieldOffsets, let fieldRecords = self.reflectionFieldDescriptor?.fieldRecords {
+            if let fieldOffsets = self.fieldOffsets {
                 class NameAndType {
                     var name: String?
                     var type: Any.Type?
                 }
-                
                 for i in 0..<self.numberOfFields {
-                    let name = fieldRecords[i].fieldName
-                    if let cMangledTypeName = fieldRecords[i].mangledTypeName,
+
+                    if let name = self.reflectionFieldDescriptor?.fieldRecords[i].fieldName,
+                        let cMangledTypeName = self.reflectionFieldDescriptor?.fieldRecords[i].mangledTypeName,
                         let fieldType = _getTypeByMangledNameInContext(cMangledTypeName, getMangledTypeNameSize(cMangledTypeName), genericContext: self.contextDescriptorPointer, genericArguments: self.genericArgumentVector) {
 
                         result.append(Property.Description(key: name, type: fieldType, offset: fieldOffsets[i]))
@@ -282,7 +271,7 @@ extension Metadata {
         }
 
         func propertyDescriptions() -> [Property.Description]? {
-            guard let fieldOffsets = self.fieldOffsets, let fieldRecords = self.reflectionFieldDescriptor?.fieldRecords else {
+            guard let fieldOffsets = self.fieldOffsets else {
                 return []
             }
             var result: [Property.Description] = []
@@ -291,8 +280,8 @@ extension Metadata {
                 var type: Any.Type?
             }
             for i in 0..<self.numberOfFields {
-                let name = fieldRecords[i].fieldName
-                if let cMangledTypeName = fieldRecords[i].mangledTypeName,
+                if let name = self.reflectionFieldDescriptor?.fieldRecords[i].fieldName,
+                    let cMangledTypeName = self.reflectionFieldDescriptor?.fieldRecords[i].mangledTypeName,
                     let fieldType = _getTypeByMangledNameInContext(cMangledTypeName, getMangledTypeNameSize(cMangledTypeName), genericContext: self.contextDescriptorPointer, genericArguments: self.genericArgumentVector) {
 
                     result.append(Property.Description(key: name, type: fieldType, offset: fieldOffsets[i]))
